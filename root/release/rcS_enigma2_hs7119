@@ -1,6 +1,7 @@
 #!/bin/sh
-#Version 170422.1
+#Version 210903.1
 
+echo "[rcS] Start"
 echo "Fortis HS7119 Enigma2"
 
 MODDIR=/lib/modules
@@ -15,6 +16,7 @@ insmod $MODDIR/nuvoton.ko
 insmod $MODDIR/simu_button.ko
 
 if [ -e /var/etc/.firstboot ]; then
+   echo "config.plugins.remotecontroltype.rctype=9" >> /etc/enigma2/settings
    echo "1min" > /dev/vfd
    echo "[rcS] WAIT 1 minute"
    rm /var/etc/.firstboot
@@ -48,11 +50,11 @@ echo "[rcS] Init stmfb (LOAD 9)"
 echo "LD 9" > /dev/vfd
 insmod $MODDIR/stmcore-display-sti7111.ko
 
-if grep -q "config.av.videoport=Scart" /etc/enigma2/settings; then
-   insmod $MODDIR/stmfb.ko display0=720x576i-32@50:12m:pal:rgb:rgb #SCART
-else
-   insmod $MODDIR/stmfb.ko display0=1280x720-32@50:12m:pal:rgb:rgb #HDMI
-fi
+#if grep -q "config.av.videoport=Scart" /etc/enigma2/settings; then
+#   insmod $MODDIR/stmfb.ko display0=720x576i-32@50:12m::pal:cvbs:rgb #SCART
+#else
+   insmod $MODDIR/stmfb.ko display0=1280x720-32@50:16m::pal:cvbs:rgb #HDMI
+#fi
 
 echo "[rcS] Loading modules"
 
@@ -62,18 +64,18 @@ if [ ! -e /boot/audio.elf ] || [ ! -e /boot/video.elf ]; then
    sleep 5
 fi
 
-echo "[rcS] Load audio firmware (LOAD 8)"
+echo "[rcS] Load video firmware (LOAD 8)"
 echo "LD 8" > /dev/vfd
+/bin/ustslave /dev/st231-0 /boot/video.elf > /dev/null
+
+echo "[rcS] Load audio firmware (LOAD 7)"
+echo "LD 7" > /dev/vfd
 dtsdown=`cat /etc/enigma2/settings | grep systemoptions.dtsdownmix | cut -d "=" -f2`
 if [ ! $dtsdown ] && [ -e /boot/audio_dts.elf ]; then
    /bin/ustslave /dev/st231-1 /boot/audio_dts.elf > /dev/null
 else
    /bin/ustslave /dev/st231-1 /boot/audio.elf > /dev/null
 fi
-
-echo "[rcS] Load video firmware (LOAD 7)"
-echo "LD 7" > /dev/vfd
-/bin/ustslave /dev/st231-0 /boot/video.elf > /dev/null
 
 echo "[rcS] Init embx (LOAD 6)"
 echo "LD 6" > /dev/vfd
@@ -107,7 +109,7 @@ echo "[rcS] Init CI & cardreader"
 insmod $MODDIR/hs711x.ko
 insmod $MODDIR/smartcard.ko
 insmod $MODDIR/pti.ko waitMS=20 videoMem=4096
-if [ $?=='2' ]; then
+if [ $? -ne 0 ]; then
    insmod $MODDIR/pti.ko
    echo "[rcS] Simple pti"
 else
@@ -128,8 +130,8 @@ insmod $MODDIR/silencegen.ko
 insmod $MODDIR/bpamem.ko
 mknod /dev/bpamem c 153 0
 
-echo "[rcS] Init HDMI-CEC"
-if [ -e $MODDIR/cec.ko ];then
+if [ -e $MODDIR/cec.ko ]; then
+   echo "[rcS] Init HDMI-CEC"
    insmod $MODDIR/cec.ko activemode=1
 fi
 
@@ -145,7 +147,7 @@ if [ -e $MODDIR/exportfs.ko ]; then
 fi
 
 if [ -e $MODDIR/cifs.ko ]; then
-echo "[rcS] Init CIFS support"
+   echo "[rcS] Init CIFS support"
    insmod $MODDIR/cifs.ko
 fi
 
@@ -155,19 +157,23 @@ if [ -e $MODDIR/ntfs.ko ]; then
 fi
 
 if [ -e $MODDIR/tun.ko ]; then
-echo "[rcS] Init tun support"
+   echo "[rcS] Init tun support"
    insmod $MODDIR/tun.ko
 fi
 
 if [ -e $MODDIR/usbserial.ko ]; then
    insmod $MODDIR/usbserial.ko
    if [ -e $MODDIR/ftdi.ko ]; then
-   echo "[rcS] Init FTDI USB serial support"
+      echo "[rcS] Init FTDI USB serial support"
       insmod $MODDIR/ftdi.ko
    fi
    if [ -e $MODDIR/pl2303.ko ]; then
-   echo "[rcS] Init PL2303 USB serial support"
+      echo "[rcS] Init PL2303 USB serial support"
       insmod $MODDIR/pl2303.ko
+   fi
+   if [ -e $MODDIR/ch341.ko ]; then
+      echo "[rcS] Init CH341 USB serial support"
+      insmod $MODDIR/ch341.ko
    fi
 fi
 
@@ -179,15 +185,23 @@ stfbcontrol a 255
 
 NFS=`grep -c nfs /proc/cmdline`
 if [ "$NFS" -eq "1" ]; then
-   echo "[rcS] Booting from NFS, don't set network"
+   echo "[rcS] Booting from NFS, do not set network"
 else
    if [ -e /etc/network/interfaces ]; then
       ip addr flush eth0
       /etc/init.d/networking stop
+      if [ -e /bin/eeprom ]; then
+         MAC=`/bin/eeprom -m`
+         echo "MAC = $MAC"
+         ip link set eth0 address $MAC
+      fi
       DHCP=`grep -c 'iface eth0 inet dhcp' /etc/network/interfaces`
       if [ "$DHCP" -eq "1" ]; then
          echo "[rcS] Starting DHCP"
          /etc/init.d/udhcpc start
+      else
+         ip=$(echo `grep address /etc/network/interfaces` | sed 's/address //g')
+         echo "[rcS] Using fixed IP $ip"
       fi
       /etc/init.d/networking start
    fi
@@ -205,7 +219,7 @@ if [ ! $wlan ] || [ ! -e $MODDIR/$wlan.ko ]; then
    echo "None."
 else
    insmod $MODDIR/$wlan.ko
-   echo "$wlan"
+   echo "[rcS] $wlan WLAN"
 #   echo "$wlan WLAN" > /dev/vfd
 #   sleep 3
 fi
@@ -215,6 +229,8 @@ if [ -e /usr/sbin/amount.sh ]; then
    (sleep 20; /usr/sbin/amount.sh) &
 fi
 
+echo "[rcS] Do extras (LOAD 1)"
+echo "LD 1" > /dev/vfd
 # inadyn
 inadyn=`cat /etc/enigma2/settings | grep systemoptions.inadyn | cut -d "=" -f2`
 if [ ! $inadyn ] ||  [ ! -e /usr/bin/inadyn ]; then
@@ -242,19 +258,18 @@ fi
 
 # Try and synchronise time
 #inettime=`cat /etc/enigma2/settings | grep systemoptions.inettime | cut -d "=" -f2`
-# if [ ! $inettime ] && [ -e /sbin/ntpdate ]; then
-if [ -e /sbin/ntpdate ]; then
+# if [ ! $inettime ] && [ -e /sbin/ntpd ]; then
+if [ -h /usr/sbin/ntpd ]; then
    echo "[rcS] Set internet time"
-   (/sbin/ntpdate nl.pool.ntp.org; /bin/fp_control -sst) &
-else
-   if [ -e /usr/sbin/time.sh ]; then
-      echo "[rcS] Use transponder time"
-      /usr/sbin/time.sh &
-   fi
+   (ntpd -n -p 0.europe.pool.ntp.org -q; /bin/fp_control -sst)
+#else
+#   if [ -e /usr/sbin/time.sh ]; then
+#      echo "[rcS] Use transponder time"
+#      /usr/sbin/time.sh &
+#   fi
 fi
 
-echo "[rcS] Init portmap & ftp (LOAD 1)"
-echo "LD 1" > /dev/vfd
+echo "[rcS] Init portmap & ftp"
 /etc/init.d/portmap start
 /etc/init.d/vsftpd start
 /usr/sbin/inetd
@@ -269,27 +284,27 @@ echo "LDE2" > /dev/vfd
 
 until false
 do
-   echo "[rcS] Entering e2 main loop"
+   echo "[rcS] Entering E2 main loop"
    if [ -e /usr/local/share/enigma2/backdrop.mvi ]; then
       showiframe -p /usr/local/share/enigma2/backdrop.mvi &
    fi
    /usr/local/bin/enigma2
    rtv=$?
-   echo "[rcS] e2 ended <- return value: " $rtv
+   echo "[rcS] E2 ended <- return value: " $rtv
    case "$rtv" in
-      0) echo "E2 ERROR"
+      0) echo "[rcS] E2 ERROR"
          echo "E2Er" > /dev/vfd
          init 6;;
-      1) echo "SHUTDOWN"
+      1) echo "[rcS] DEEP STANDBY"
          echo "Shdn" > /dev/vfd
          if [ -e /usr/local/share/enigma2/shutdown.mvi ]; then
             showiframe -p /usr/local/share/enigma2/shutdown.mvi &
          fi
          init 0;;
-      2) echo "REBOOT"
+      2) echo "[rcS] REBOOT"
          echo "rebt" > /dev/vfd
          init 6;;
-      3) echo "E2 RESTART"
+      3) echo "[rcS] E2 RESTART"
          echo "E2rS" > /dev/vfd
          echo "0" > /proc/progress
          if [ -e /usr/local/share/enigma2/backdrop.mvi ]; then
@@ -298,7 +313,16 @@ do
             showiframe -p /boot/bootlogo.mvi &
          fi
          echo -n " ";;
-      *) echo "ERROR"
+      6) echo "[rcS] E2 DEBUG RESTART"
+         echo "Rdbg" > /dev/vfd
+         echo "0" > /proc/progress
+         if [ -e /usr/local/share/enigma2/backdrop.mvi ]; then
+            showiframe -p /usr/local/share/enigma2/backdrop.mvi &
+         else
+            showiframe -p /boot/bootlogo.mvi &
+         fi
+         echo -n " ";;
+      *) echo "[rcS] ERROR"
          echo "Err " > /dev/vfd
          init 6;;
    esac
@@ -306,5 +330,5 @@ done
 
 #never reached
 echo "rebt" > /dev/vfd
-echo "REBOOT HS7119"
+echo "[rcS] REBOOT HS7119"
 reboot -f

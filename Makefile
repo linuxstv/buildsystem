@@ -16,7 +16,6 @@ include make/buildenv.mk
 PARALLEL_JOBS := $(shell echo $$((1 + `getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1`)))
 override MAKE = make $(if $(findstring j,$(filter-out --%,$(MAKEFLAGS))),,-j$(PARALLEL_JOBS)) $(SILENT_OPT)
 
-
 ############################################################################
 #  A print out of environment variables
 #
@@ -30,7 +29,7 @@ printenv:
 	@echo "ARCHIVE_DIR      : $(ARCHIVE)"
 	@echo "BASE_DIR         : $(BASE_DIR)"
 	@echo "CUSTOM_DIR       : $(CUSTOM_DIR)"
-	@echo "APPS_DIR         : $(APPS_DIR)"
+	@echo "TOOLS_DIR        : $(TOOLS_DIR)"
 	@echo "DRIVER_DIR       : $(DRIVER_DIR)"
 	@echo "FLASH_DIR        : $(FLASH_DIR)"
 	@echo "CROSS_DIR        : $(CROSS_DIR)"
@@ -40,7 +39,6 @@ printenv:
 	@echo "TARGET_DIR       : $(TARGET_DIR)"
 	@echo "KERNEL_DIR       : $(KERNEL_DIR)"
 	@echo "MAINTAINER       : $(MAINTAINER)"
-	@echo "BOXARCH          : $(BOXARCH)"
 	@echo "BUILD            : $(BUILD)"
 	@echo "TARGET           : $(TARGET)"
 	@echo "BOXTYPE          : $(BOXTYPE)"
@@ -51,11 +49,12 @@ printenv:
 #	@echo "KERNEL_RELEASE   : $(KERNEL_RELEASE)"
 #	@echo "KERNEL_STM_LABEL : $(KERNEL_STM_LABEL)"
 	@echo "MEDIAFW          : $(MEDIAFW)"
+	@echo "OPTIMIZATIONS    : $(OPTIMIZATIONS)"
 	@echo "PARALLEL_JOBS    : $(PARALLEL_JOBS)"
 	@echo "KBUILD_VERBOSE   : $(KBUILD_VERBOSE)"
-ifeq ($(BOXTYPE), $(filter $(BOXTYPE), hs7110 hs7119 hs7420 hs7429 hs7810a hs7819))
+#ifeq ($(BOXTYPE), $(filter $(BOXTYPE), hs7110 hs7119 hs7420 hs7429 hs7810a hs7819))
 	@echo "DESTINATION      : $(DESTINATION)"
-endif
+#endif
 	@echo "IMAGE            : $(IMAGE)"
 	@echo '================================================================================'
 ifeq ($(IMAGE), $(filter $(IMAGE), neutrino neutrino-wlandriver))
@@ -70,12 +69,10 @@ else ifeq ($(IMAGE), $(filter $(IMAGE), enigma2 enigma2-wlandriver))
 	@echo "LOCAL_ENIGMA2_BUILD_OPTIONS : $(LOCAL_ENIGMA2_BUILD_OPTIONS)"
 	@echo "LOCAL_ENIGMA2_CPPFLAGS      : $(LOCAL_ENIGMA2_CPPFLAGS)"
 	@echo "LOCAL_ENIGMA2_DEPS          : $(LOCAL_ENIGMA2_DEPS)"
-else ifeq ($(IMAGE), $(filter $(IMAGE), tvheadend))
-	@echo "TVHEADEND_DIFF                : $(TVHEADEND_DIFF)"
-	@echo "THVEADEND_REVISION            : $(TVHEADEND_REVISION)"
-	@echo "LOCAL_TVHEADEND_BUILD_OPTIONS : $(LOCAL_TVHEADEND_BUILD_OPTIONS)"
-	@echo "LOCAL_TVHEADEND_CPPFLAGS      : $(LOCAL_TVHEADEND_CPPFLAGS)"
-	@echo "LOCAL_TVHEADEND_DEPS          : $(LOCAL_TVHEADEND_DEPS)"
+else ifeq ($(IMAGE), $(filter $(IMAGE), titan titan-wlandriver))
+	@echo "LOCAL_TITAN_BUILD_OPTIONS   : $(LOCAL_TITAN_BUILD_OPTIONS)"
+	@echo "LOCAL_TITAN_CPPFLAGS        : $(LOCAL_TITAN_CPPFLAGS)"
+	@echo "LOCAL_TITAN_DEPS            : $(LOCAL_TITAN_DEPS)"
 endif
 	@echo '================================================================================'
 	@echo ""
@@ -99,7 +96,7 @@ help:
 	@echo ""
 	@echo "later, you might find these useful:"
 	@echo "* make update-self         - update the build system"
-	@echo "* make update              - update the build system, apps, driver and flash"
+	@echo "* make update              - update the build system, tools, driver and flash"
 	@echo ""
 	@echo "cleantargets:"
 	@echo "make clean                 - Clears everything except kernel."
@@ -109,17 +106,11 @@ help:
 # define package versions first...
 include make/contrib-libs.mk
 include make/contrib-apps.mk
-ifeq ($(BOXARCH), sh4)
-include make/linux-kernel-sh4.mk
-include make/crosstool-sh4.mk
-include make/driver-sh4.mk
-include make/gstreamer-sh4.mk
-else
-include make/linux-kernel-arm.mk
-include make/crosstool-arm.mk
-include make/driver-arm.mk
-include make/gstreamer-arm.mk
-endif
+include make/linux-kernel.mk
+include make/crosstool.mk
+include make/driver.mk
+include make/ffmpeg.mk
+include make/gstreamer.mk
 include make/root-etc.mk
 include make/python.mk
 include make/tools.mk
@@ -129,10 +120,10 @@ include make/enigma2-release.mk
 include make/neutrino.mk
 include make/neutrino-plugins.mk
 include make/neutrino-release.mk
-include make/tvheadend.mk
-include make/tvheadend-release.mk
+include make/neutrino-patches.mk
+include make/titan.mk
+include make/titan-release.mk
 include make/cleantargets.mk
-include make/patches.mk
 include make/bootstrap.mk
 
 update-self:
@@ -164,16 +155,22 @@ update:
 		else \
 			git pull; \
 		fi; \
+		if [ -d ~/pti_np ] && [ ! -d ./pti_np ]; then \
+			echo "Installing pti_np"; \
+			mkdir pti_np; \
+			cp -rf ~/pti_np/* ./pti_np; \
+			cd ..; \
+		fi; \
 	fi
 	@echo;
-	@if test -d $(APPS_DIR); then \
-		cd $(APPS_DIR)/; \
+	@if test -d $(TOOLS_DIR); then \
+		cd $(TOOLS_DIR)/; \
 		echo '==================================================================='; \
-		echo '      updating $(GIT_NAME_APPS)-apps git repository'; \
+		echo '      updating $(GIT_NAME_TOOLS)-tools git repository'; \
 		echo '==================================================================='; \
 		echo; \
 		if [ "$(GIT_STASH_PULL)" = "stashpull" ]; then \
-			git stash && git stash show -p > ./pull-stash-apps.patch || true && git pull && git stash pop || true; \
+			git stash && git stash show -p > ./pull-stash-tools.patch || true && git pull && git stash pop || true; \
 		else \
 			git pull; \
 		fi; \
@@ -202,7 +199,7 @@ everything: $(shell sed -n 's/^\$$.D.\/\(.*\):.*/\1/p' make/*.mk)
 # print all present targets...
 print-targets:
 	@sed -n 's/^\$$.D.\/\(.*\):.*/\1/p; s/^\([a-z].*\):\( \|$$\).*/\1/p;' \
-		`ls -1 make/*.mk|grep -v make/buildenv.mk|grep -v make/neutrino-release.mk|grep -v make/enigma2-release.mk`|grep -v make/tvheadend-release.mk` | \
+		`ls -1 make/*.mk|grep -v make/buildenv.mk|grep -v make/neutrino-release.mk|grep -v make/enigma2-release.mk|grep -v make/tvheadend-release.mk` | \
 		sort -u | fold -s -w 65
 
 # for local extensions, e.g. special plugins or similar...

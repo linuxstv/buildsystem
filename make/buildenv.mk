@@ -1,6 +1,9 @@
-# set up environment for other makefiles
-# print '+' before each executed command
-# SHELL := $(SHELL) -x
+#
+# set up build environment for other makefiles
+#
+# -----------------------------------------------------------------------------
+
+#SHELL := $(SHELL) -x
 
 CONFIG_SITE =
 export CONFIG_SITE
@@ -8,10 +11,23 @@ export CONFIG_SITE
 LD_LIBRARY_PATH =
 export LD_LIBRARY_PATH
 
-BASE_DIR             := $(shell pwd)
+export BOXTYPE
 
-ARCHIVE               = $(HOME)/Archive
-APPS_DIR              = $(BASE_DIR)/apps
+# -----------------------------------------------------------------------------
+
+# set up default parallelism
+PARALLEL_JOBS := $(shell echo $$((1 + `getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1`)))
+override MAKE = make $(if $(findstring j,$(filter-out --%,$(MAKEFLAGS))),,-j$(PARALLEL_JOBS)) $(SILENT_OPT)
+export PARALLEL_JOBS
+
+MAKEFLAGS            += --no-print-directory
+
+# -----------------------------------------------------------------------------
+
+# default platform...
+BASE_DIR             := $(shell pwd)
+ARCHIVE              ?= $(HOME)/Archive
+TOOLS_DIR             = $(BASE_DIR)/tools
 BUILD_TMP             = $(BASE_DIR)/build_tmp
 SOURCE_DIR            = $(BASE_DIR)/build_source
 DRIVER_DIR            = $(BASE_DIR)/driver
@@ -22,21 +38,38 @@ FLASH_DIR             = $(BASE_DIR)/flash
 # for local extensions
 -include $(BASE_DIR)/config.local
 
-# default platform...
-MAKEFLAGS            += --no-print-directory
+ifneq ($(GIT_USER), "")
+ifneq ($(GIT_TOKEN), "")
+GIT_ACCESS            = $(GIT_USER):$(GIT_TOKEN)@
+endif
+endif
 GIT_PROTOCOL         ?= http
 ifneq ($(GIT_PROTOCOL), http)
-GITHUB               ?= git://github.com
+GITHUB               ?= git://$(GIT_ACCESS)github.com
 else
-GITHUB               ?= https://github.com
+GITHUB               ?= https://$(GIT_ACCESS)github.com
 endif
 GIT_NAME             ?= Audioniek
 GIT_NAME_DRIVER      ?= Audioniek
-GIT_NAME_APPS        ?= Audioniek
+GIT_NAME_TOOLS       ?= Audioniek
 GIT_NAME_FLASH       ?= Audioniek
 
+# default config...
+KBUILD_VERBOSE       ?= normal
+BOXARCH              ?= sh4
+BOXTYPE              ?= hs8200
+BOXARCH              ?= sh4
+KERNEL_STM           ?= p0217
+IMAGE                ?= neutrino-wlandriver
+FLAVOUR              ?= neutrino-ddt
+OPTIMIZATIONS        ?= size
+MEDIAFW              ?= buildinplayer
+EXTERNAL_LCD         ?= none
+DESTINATION          ?= flash
+
 TUFSBOX_DIR           = $(BASE_DIR)/tufsbox
-CROSS_BASE            = $(BASE_DIR)/cross/$(BOXARCH)/$(BOXTYPE)
+#CROSS_BASE            = $(BASE_DIR)/cross/$(BOXTYPE)
+CROSS_BASE            = $(TUFSBOX_DIR)/cross
 TARGET_DIR            = $(TUFSBOX_DIR)/cdkroot
 BOOT_DIR              = $(TUFSBOX_DIR)/cdkroot-tftpboot
 CROSS_DIR             = $(TUFSBOX_DIR)/cross
@@ -45,7 +78,7 @@ RELEASE_DIR           = $(TUFSBOX_DIR)/release
 
 CUSTOM_DIR            = $(BASE_DIR)/custom
 OWN_BUILD             = $(BASE_DIR)/own_build
-PATCHES               = $(BASE_DIR)/Patches
+PATCHES               = $(BASE_DIR)/patches
 SCRIPTS_DIR           = $(BASE_DIR)/scripts
 SKEL_ROOT             = $(BASE_DIR)/root
 D                     = $(BASE_DIR)/.deps
@@ -58,44 +91,50 @@ CCACHE                = /usr/bin/ccache
 
 BUILD                ?= $(shell /usr/share/libtool/config.guess 2>/dev/null || /usr/share/libtool/config/config.guess 2>/dev/null || /usr/share/libtool/build-aux/config.guess 2>/dev/null || /usr/share/misc/config.guess 2>/dev/null)
 
-ifeq ($(BOXARCH), sh4)
 CCACHE_DIR            = $(HOME)/.ccache-bs-sh4
 export CCACHE_DIR
+
+BS_GCC_VER           ?= 4.8.4
+ifeq ($(BS_GCC_VER), $(filter $(BS_GCC_VER), 4.6.3 4.8.4))
 TARGET               ?= sh4-linux
-BOXARCH              ?= sh4
+else
+TARGET               ?= sh4-stm-linux-gnu
+endif
 KERNELNAME            = uImage
 TARGET_MARCH_CFLAGS   =
-CORTEX_STRINGS        =
-else
-CCACHE_DIR            = $(HOME)/.ccache-bs-arm
-export CCACHE_DIR
-TARGET               ?= arm-cortex-linux-gnueabihf
-BOXARCH              ?= arm
-KERNELNAME            = zImage
-TARGET_MARCH_CFLAGS   = -march=armv7ve -mtune=cortex-a15 -mfpu=neon-vfpv4 -mfloat-abi=hard
-CORTEX_STRINGS        = -lcortex-strings
-endif
 
 OPTIMIZATIONS        ?= size
+ifeq ($(OPTIMIZATIONS), small)
+TARGET_O_CFLAGS       = -Os
+TARGET_EXTRA_CFLAGS   = -ffunction-sections -fdata-sections
+TARGET_EXTRA_LDFLAGS  = -Wl,--gc-sections
+ENIGMA_OPT_OPTION     = --without-debug
+endif
 ifeq ($(OPTIMIZATIONS), size)
 TARGET_O_CFLAGS       = -Os
 TARGET_EXTRA_CFLAGS   = -ffunction-sections -fdata-sections
 TARGET_EXTRA_LDFLAGS  = -Wl,--gc-sections
+ENIGMA_OPT_OPTION     =
+# Uncomment next line to support Power VU DES (requires public pti!)
+#POWER_VU_DES          = 1
 endif
 ifeq ($(OPTIMIZATIONS), normal)
 TARGET_O_CFLAGS       = -O2
 TARGET_EXTRA_CFLAGS   =
 TARGET_EXTRA_LDFLAGS  =
+ENIGMA_OPT_OPTION     =
 endif
 ifeq ($(OPTIMIZATIONS), kerneldebug)
 TARGET_O_CFLAGS       = -O2
 TARGET_EXTRA_CFLAGS   =
 TARGET_EXTRA_LDFLAGS  =
+ENIGMA_OPT_OPTION     =
 endif
 ifeq ($(OPTIMIZATIONS), debug)
 TARGET_O_CFLAGS       = -O0 -g
 TARGET_EXTRA_CFLAGS   =
 TARGET_EXTRA_LDFLAGS  =
+ENIGMA_OPT_OPTION     =
 endif
 
 TARGET_LIB_DIR        = $(TARGET_DIR)/usr/lib
@@ -104,7 +143,7 @@ TARGET_INCLUDE_DIR    = $(TARGET_DIR)/usr/include
 TARGET_CFLAGS         = -pipe $(TARGET_O_CFLAGS) $(TARGET_MARCH_CFLAGS) $(TARGET_EXTRA_CFLAGS) -I$(TARGET_INCLUDE_DIR)
 TARGET_CPPFLAGS       = $(TARGET_CFLAGS)
 TARGET_CXXFLAGS       = $(TARGET_CFLAGS)
-TARGET_LDFLAGS        = $(CORTEX_STRINGS) -Wl,-rpath -Wl,/usr/lib -Wl,-rpath-link -Wl,$(TARGET_LIB_DIR) -L$(TARGET_LIB_DIR) -L$(TARGET_DIR)/lib $(TARGET_EXTRA_LDFLAGS)
+TARGET_LDFLAGS        = -Wl,-rpath -Wl,/usr/lib -Wl,-rpath-link -Wl,$(TARGET_LIB_DIR) -L$(TARGET_LIB_DIR) -L$(TARGET_DIR)/lib $(TARGET_EXTRA_LDFLAGS)
 LD_FLAGS              = $(TARGET_LDFLAGS)
 PKG_CONFIG            = $(HOST_DIR)/bin/$(TARGET)-pkg-config
 PKG_CONFIG_PATH       = $(TARGET_LIB_DIR)/pkgconfig
@@ -122,12 +161,14 @@ TERM_YELLOW_BOLD     := \033[01;33m
 TERM_NORMAL          := \033[0m
 
 # set the default verbosity
-ifndef KBUILD_VERBOSE
-KBUILD_VERBOSE        = normal
-endif
+#ifndef KBUILD_VERBOSE
+#KBUILD_VERBOSE        = normal
+#endif
 
 MAKEFLAGS            += --no-print-directory
+MINUS_Q               = -q
 ifeq ($(KBUILD_VERBOSE), verbose)
+MINUS_Q               =
 SILENT_CONFIGURE      =
 SILENT_PATCH          =
 SILENT_OPT            =
@@ -135,7 +176,7 @@ SILENT                =
 WGET_SILENT_OPT       =
 endif
 ifeq ($(KBUILD_VERBOSE), normal)
-SILENT_CONFIGURE      = -q
+SILENT_CONFIGURE      = $(MINUS_Q)
 SILENT_PATCH          =
 SILENT_OPT            =
 SILENT                = @
@@ -167,6 +208,9 @@ UNTAR                 = $(SILENT)tar -C $(BUILD_TMP) -xf $(ARCHIVE)
 SET                   = $(SILENT)set
 REMOVE                = $(SILENT)rm -rf $(BUILD_TMP)
 
+CH_DIR                = $(SILENT)set -e; cd $(BUILD_TMP)
+MK_DIR                = mkdir -p $(BUILD_TMP)
+STRIP                 = $(TARGET)-strip
 #
 split_deps_dir=$(subst ., ,$(1))
 DEPS_DIR              = $(subst $(D)/,,$@)
@@ -185,7 +229,7 @@ START_BUILD           = @echo "=================================================
 
 TOUCH                 = @touch $@; \
                         echo "--------------------------------------------------------------"; \
-        		if [ $(PKG_VER_HELPER) == "AA" ]; then \
+                        if [ $(PKG_VER_HELPER) == "AA" ]; then \
                             echo -e "Build of $(TERM_GREEN_BOLD)$(PKG_NAME)$(TERM_NORMAL) completed."; \
                         else \
                             echo -e "Build of $(TERM_GREEN_BOLD)$(PKG_NAME) $(PKG_VER)$(TERM_NORMAL) completed."; \
@@ -213,10 +257,12 @@ define apply_patches
             fi; \
         fi; \
     done; \
-    if [ $(PKG_VER_HELPER) == "AA" ]; then \
-        echo -e "Patching $(TERM_GREEN_BOLD)$(PKG_NAME)$(TERM_NORMAL) completed."; \
-    else \
-        echo -e "Patching $(TERM_GREEN_BOLD)$(PKG_NAME) $(PKG_VER)$(TERM_NORMAL) completed."; \
+    if [ '$(1)' -a '$(1)' != ' ' ]; then \
+        if [ $(PKG_VER_HELPER) == "AA" ]; then \
+            echo -e "Patching $(TERM_GREEN_BOLD)$(PKG_NAME)$(TERM_NORMAL) completed."; \
+        else \
+            echo -e "Patching $(TERM_GREEN_BOLD)$(PKG_NAME) $(PKG_VER)$(TERM_NORMAL) completed."; \
+        fi; \
     fi; \
     echo
 endef
@@ -274,7 +320,7 @@ ifneq ($(KBUILD_VERBOSE), verbose)
 CONFIGURE = \
 	test -f ./configure || ./autogen.sh $(SILENT_OPT) && \
 	$(BUILDENV) \
-	./configure $(CONFIGURE_OPTS) $(SILENT_OPT)
+	./configure $(CONFIGURE_OPTS)
 else
 CONFIGURE = \
 	test -f ./configure || ./autogen.sh && \
@@ -285,7 +331,7 @@ endif
 CONFIGURE_TOOLS = \
 	./autogen.sh $(SILENT_OPT) && \
 	$(BUILDENV) \
-	./configure $(CONFIGURE_OPTS) $(SILENT_OPT)
+	./configure $(CONFIGURE_OPTS)
 
 MAKE_OPTS := \
 	CC=$(TARGET)-gcc \
@@ -315,8 +361,11 @@ BUILD_CONFIG       = build-neutrino
 else ifeq ($(IMAGE), neutrino-wlandriver)
 BUILD_CONFIG       = build-neutrino
 WLANDRIVER         = WLANDRIVER=wlandriver
-else ifeq ($(IMAGE), tvheadend)
-BUILD_CONFIG       = build-tvheadend
+else ifeq ($(IMAGE), titan)
+BUILD_CONFIG       = build-titan
+else ifeq ($(IMAGE), titan-wlandriver)
+BUILD_CONFIG       = build-titan
+WLANDRIVER         = WLANDRIVER=wlandriver
 else
 BUILD_CONFIG       = build-neutrino
 endif
@@ -393,11 +442,11 @@ PLATFORM_CPPFLAGS += -DPLATFORM_SPARK7162
 DRIVER_PLATFORM   += SPARK7162=spark7162
 E_CONFIG_OPTS     += --enable-spark7162
 endif
-ifeq ($(BOXTYPE), fortis_hdbox)
-KERNEL_PATCHES_24  = $(FORTIS_HDBOX_PATCHES_24)
-PLATFORM_CPPFLAGS += -DPLATFORM_FORTIS_HDBOX
-DRIVER_PLATFORM   += FORTIS_HDBOX=fortis_hdbox
-E_CONFIG_OPTS     += --enable-fortis_hdbox
+ifeq ($(BOXTYPE), fs9000)
+KERNEL_PATCHES_24  = $(FS9000_PATCHES_24)
+PLATFORM_CPPFLAGS += -DPLATFORM_FS9000
+DRIVER_PLATFORM   += FS9000=fs9000
+E_CONFIG_OPTS     += --enable-fs9000
 endif
 ifeq ($(BOXTYPE), hs7110)
 KERNEL_PATCHES_24  = $(HS7110_PATCHES_24)
@@ -447,17 +496,17 @@ PLATFORM_CPPFLAGS += -DPLATFORM_ATEMIO530
 DRIVER_PLATFORM   += ATEMIO530=atemio530
 E_CONFIG_OPTS     += --enable-atemio530
 endif
-ifeq ($(BOXTYPE), atevio7500)
-KERNEL_PATCHES_24  = $(ATEVIO7500_PATCHES_24)
-PLATFORM_CPPFLAGS += -DPLATFORM_ATEVIO7500
-DRIVER_PLATFORM   += ATEVIO7500=atevio7500
-E_CONFIG_OPTS     += --enable-atevio7500
+ifeq ($(BOXTYPE), hs8200)
+KERNEL_PATCHES_24  = $(HS8200_PATCHES_24)
+PLATFORM_CPPFLAGS += -DPLATFORM_HS8200
+DRIVER_PLATFORM   += HS8200=hs8200
+E_CONFIG_OPTS     += --enable-hs8200
 endif
-ifeq ($(BOXTYPE), octagon1008)
-KERNEL_PATCHES_24  = $(OCTAGON1008_PATCHES_24)
-PLATFORM_CPPFLAGS += -DPLATFORM_OCTAGON1008
-DRIVER_PLATFORM   += OCTAGON1008=octagon1008
-E_CONFIG_OPTS     += --enable-octagon1008
+ifeq ($(BOXTYPE), hs9510)
+KERNEL_PATCHES_24  = $(HS9510_PATCHES_24)
+PLATFORM_CPPFLAGS += -DPLATFORM_HS9510
+DRIVER_PLATFORM   += HS9510=hs9510
+E_CONFIG_OPTS     += --enable-hs9510
 endif
 ifeq ($(BOXTYPE), adb_box)
 KERNEL_PATCHES_24  = $(ADB_BOX_PATCHES_24)
@@ -493,43 +542,43 @@ ifeq ($(BOXTYPE), cuberevo_mini)
 KERNEL_PATCHES_24  = $(CUBEREVO_MINI_PATCHES_24)
 PLATFORM_CPPFLAGS += -DPLATFORM_CUBEREVO_MINI
 DRIVER_PLATFORM   += CUBEREVO_MINI=cuberevo_mini
-E_CONFIG_OPTS     += --enable-cuberevo
+E_CONFIG_OPTS     += --enable-cuberevo_mini
 endif
 ifeq ($(BOXTYPE), cuberevo_mini2)
 KERNEL_PATCHES_24  = $(CUBEREVO_MINI2_PATCHES_24)
 PLATFORM_CPPFLAGS += -DPLATFORM_CUBEREVO_MINI2
 DRIVER_PLATFORM   += CUBEREVO_MINI2=cuberevo_mini2
-E_CONFIG_OPTS     += --enable-cuberevo
+E_CONFIG_OPTS     += --enable-cuberevo_mini2
 endif
 ifeq ($(BOXTYPE), cuberevo_mini_fta)
 KERNEL_PATCHES_24  = $(CUBEREVO_MINI_FTA_PATCHES_24)
 PLATFORM_CPPFLAGS += -DPLATFORM_CUBEREVO_MINI_FTA
 DRIVER_PLATFORM   += CUBEREVO_MINI_FTA=cuberevo_mini_fta
-E_CONFIG_OPTS     += --enable-cuberevo
+E_CONFIG_OPTS     += --enable-cuberevo_mini_fta
 endif
 ifeq ($(BOXTYPE), cuberevo_250hd)
 KERNEL_PATCHES_24  = $(CUBEREVO_250HD_PATCHES_24)
 PLATFORM_CPPFLAGS += -DPLATFORM_CUBEREVO_250HD
 DRIVER_PLATFORM   += CUBEREVO_250HD=cuberevo_250hd
-E_CONFIG_OPTS     += --enable-cuberevo
+E_CONFIG_OPTS     += --enable-cuberevo_250hd
 endif
 ifeq ($(BOXTYPE), cuberevo_2000hd)
 KERNEL_PATCHES_24  = $(CUBEREVO_2000HD_PATCHES_24)
 PLATFORM_CPPFLAGS += -DPLATFORM_CUBEREVO_2000HD
 DRIVER_PLATFORM   += CUBEREVO_2000HD=cuberevo_2000hd
-E_CONFIG_OPTS     += --enable-cuberevo
+E_CONFIG_OPTS     += --enable-cuberevo_2000hd
 endif
 ifeq ($(BOXTYPE), cuberevo_3000hd)
 KERNEL_PATCHES_24  = $(CUBEREVO_3000HD_PATCHES_24)
 PLATFORM_CPPFLAGS += -DPLATFORM_CUBEREVO_3000HD
 DRIVER_PLATFORM   += CUBEREVO_3000HD=cuberevo_3000hd
-E_CONFIG_OPTS     += --enable-cuberevo
+E_CONFIG_OPTS     += --enable-cuberevo_3000hd
 endif
 ifeq ($(BOXTYPE), cuberevo_9500hd)
 KERNEL_PATCHES_24  = $(CUBEREVO_9500HD_PATCHES_24)
 PLATFORM_CPPFLAGS += -DPLATFORM_CUBEREVO_9500HD
 DRIVER_PLATFORM   += CUBEREVO_9500HD=cuberevo_9500hd
-E_CONFIG_OPTS     += --enable-cuberevo
+E_CONFIG_OPTS     += --enable-cuberevo_9500hd
 endif
 ifeq ($(BOXTYPE), vitamin_hd5000)
 KERNEL_PATCHES_24  = $(VITAMIN_HD5000_PATCHES_24)
@@ -548,5 +597,53 @@ KERNEL_PATCHES_24  = $(ARIVALINK200_PATCHES_24)
 PLATFORM_CPPFLAGS += -DPLATFORM_ARIVALINK200
 DRIVER_PLATFORM   += ARIVALINK200=arivalink200
 E_CONFIG_OPTS     += --enable-arivalink200
+endif
+ifeq ($(BOXTYPE), pace7241)
+KERNEL_PATCHES_24  = $(PACE7241_PATCHES_24)
+PLATFORM_CPPFLAGS += -DPLATFORM_PACE7241
+DRIVER_PLATFORM   += PACE7241=pace7241
+E_CONFIG_OPTS     += --enable-pace7241
+endif
+ifeq ($(BOXTYPE), vip1_v1)
+KERNEL_PATCHES_24  = $(VIP1_V1_PATCHES_24)
+PLATFORM_CPPFLAGS += -DPLATFORM_VIP1_V1
+DRIVER_PLATFORM   += VIP1_V1=vip1_v1
+E_CONFIG_OPTS     += --enable-vip1_v1
+endif
+ifeq ($(BOXTYPE), vip1_v2)
+KERNEL_PATCHES_24  = $(VIP1_V2_PATCHES_24)
+PLATFORM_CPPFLAGS += -DPLATFORM_VIP1_V2
+DRIVER_PLATFORM   += VIP1_V2=vip1_v2
+E_CONFIG_OPTS     += --enable-vip1_v2
+endif
+ifeq ($(BOXTYPE), vip2)
+KERNEL_PATCHES_24  = $(VIP2_PATCHES_24)
+PLATFORM_CPPFLAGS += -DPLATFORM_VIP2
+DRIVER_PLATFORM   += VIP2=vip2
+E_CONFIG_OPTS     += --enable-vip2
+endif
+ifeq ($(BOXTYPE), adb_2850)
+KERNEL_PATCHES_24  = $(ADB_2850_PATCHES_24)
+PLATFORM_CPPFLAGS += -DPLATFORM_ADB_2850
+DRIVER_PLATFORM   += ADB_2850=adb_2850
+E_CONFIG_OPTS     += --enable-adb_2850
+endif
+ifeq ($(BOXTYPE), opt9600)
+KERNEL_PATCHES_24  = $(OPT9600_PATCHES_24)
+PLATFORM_CPPFLAGS += -DPLATFORM_OPT9600
+DRIVER_PLATFORM   += OPT9600=opt9600
+E_CONFIG_OPTS     += --enable-opt9600
+endif
+ifeq ($(BOXTYPE), opt9600mini)
+KERNEL_PATCHES_24  = $(OPT9600MINI_PATCHES_24)
+PLATFORM_CPPFLAGS += -DPLATFORM_OPT9600MINI
+DRIVER_PLATFORM   += OPT9600MINI=opt9600mini
+E_CONFIG_OPTS     += --enable-opt9600mini
+endif
+ifeq ($(BOXTYPE), opt9600prima)
+KERNEL_PATCHES_24  = $(OPT9600PRIMA_PATCHES_24)
+PLATFORM_CPPFLAGS += -DPLATFORM_OPT9600PRIMA
+DRIVER_PLATFORM   += OPT9600PRIMA=opt9600prima
+E_CONFIG_OPTS     += --enable-opt9600prima
 endif
 

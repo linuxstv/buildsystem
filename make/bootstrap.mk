@@ -30,7 +30,7 @@ $(D)/host_pkgconfig: directories $(ARCHIVE)/$(HOST_PKGCONFIG_SOURCE)
 	$(START_BUILD)
 	$(REMOVE)/pkg-config-$(HOST_PKGCONFIG_VER)
 	$(UNTAR)/$(HOST_PKGCONFIG_SOURCE)
-	$(SET) -e; cd $(BUILD_TMP)/pkg-config-$(HOST_PKGCONFIG_VER); \
+	$(CH_DIR)/pkg-config-$(HOST_PKGCONFIG_VER); \
 		./configure $(SILENT_CONFIGURE) $(SILENT_OPT) \
 			--prefix=$(HOST_DIR) \
 			--program-prefix=$(TARGET)- \
@@ -52,12 +52,13 @@ HOST_MODULE_INIT_TOOLS_PATCH = module-init-tools-$(HOST_MODULE_INIT_TOOLS_VER).p
 
 $(D)/host_module_init_tools: $(ARCHIVE)/$(HOST_MODULE_INIT_TOOLS_SOURCE)
 	$(START_BUILD)
+	$(SILENT)if [ ! -d $(BUILD_TMP) ]; then mkdir $(BUILD_TMP); fi;
 	$(REMOVE)/module-init-tools-$(HOST_MODULE_INIT_TOOLS_VER)
 	$(UNTAR)/$(HOST_MODULE_INIT_TOOLS_SOURCE)
-	$(SET) -e; cd $(BUILD_TMP)/module-init-tools-$(HOST_MODULE_INIT_TOOLS_VER); \
+	$(CH_DIR)/module-init-tools-$(HOST_MODULE_INIT_TOOLS_VER); \
 		$(call apply_patches,$(HOST_MODULE_INIT_TOOLS_PATCH)); \
 		autoreconf -fi $(SILENT_OPT); \
-		./configure $(SILENT_CONFIGURE) $(SILENT_OPT) \
+		./configure $(SILENT_CONFIGURE) \
 			--prefix=$(HOST_DIR) \
 			--sbindir=$(HOST_DIR)/bin \
 		; \
@@ -67,28 +68,58 @@ $(D)/host_module_init_tools: $(ARCHIVE)/$(HOST_MODULE_INIT_TOOLS_SOURCE)
 	$(TOUCH)
 
 #
-# host_mtd_utils
+# host_mtd_utils_old
 #
-HOST_MTD_UTILS_VER = $(MTD_UTILS_VER)
+HOST_MTD_UTILS_OLD_VER    = $(MTD_UTILS_OLD_VER)
+HOST_MTD_UTILS_OLD_SOURCE = $(MTD_UTILS_OLD_SOURCE)
+HOST_MTD_UTILS_OLD_PATCH  = host-mtd-utils-$(HOST_MTD_UTILS_OLD_VER).patch
+HOST_MTD_UTILS_OLD_PATCH += host-mtd-utils-$(HOST_MTD_UTILS_OLD_VER)-sysmacros.patch
+
+$(D)/host_mtd_utils_old: directories $(ARCHIVE)/$(HOST_MTD_UTILS_OLD_SOURCE)
+	$(START_BUILD)
+	$(REMOVE)/mtd-utils-$(HOST_MTD_UTILS_OLD_VER)
+	$(UNTAR)/$(HOST_MTD_UTILS_OLD_SOURCE)
+	$(CH_DIR)/mtd-utils-$(HOST_MTD_UTILS_OLD_VER); \
+		$(call apply_patches,$(HOST_MTD_UTILS_OLD_PATCH)); \
+		$(MAKE) `pwd`/mkfs.jffs2 `pwd`/sumtool BUILDDIR=`pwd` WITHOUT_XATTR=1 DESTDIR=$(HOST_DIR); \
+		$(MAKE) install DESTDIR=$(HOST_DIR)/bin
+	$(REMOVE)/mtd-utils-$(HOST_MTD_UTILS_OLD_VER)
+	$(TOUCH)
+
+#
+# mtd_utils
+#
+HOST_MTD_UTILS_VER    = $(MTD_UTILS_VER)
 HOST_MTD_UTILS_SOURCE = $(MTD_UTILS_SOURCE)
-HOST_MTD_UTILS_PATCH = host-mtd-utils-$(HOST_MTD_UTILS_VER).patch
+HOST_MTD_UTILS_PATCH  = host-mtd-utils-$(HOST_MTD_UTILS_VER).patch
 
 $(D)/host_mtd_utils: directories $(ARCHIVE)/$(HOST_MTD_UTILS_SOURCE)
 	$(START_BUILD)
 	$(REMOVE)/mtd-utils-$(HOST_MTD_UTILS_VER)
 	$(UNTAR)/$(HOST_MTD_UTILS_SOURCE)
-	$(SET) -e; cd $(BUILD_TMP)/mtd-utils-$(HOST_MTD_UTILS_VER); \
-		$(call apply_patches,$(HOST_MTD_UTILS_PATCH)); \
-		$(MAKE) `pwd`/mkfs.jffs2 `pwd`/sumtool BUILDDIR=`pwd` WITHOUT_XATTR=1 DESTDIR=$(HOST_DIR); \
-		$(MAKE) install DESTDIR=$(HOST_DIR)/bin
+	$(CH_DIR)/mtd-utils-$(HOST_MTD_UTILS_VER); \
+		$(call apply_patches, $(HOST_MTD_UTILS_PATCH)); \
+		$(CONFIGURE) \
+			--target=$(TARGET) \
+			--prefix= \
+			--program-suffix="" \
+			--mandir=/.remove \
+			--docdir=/.remove \
+			--disable-builddir \
+		; \
+		$(MAKE); \
+		cp -a $(BUILD_TMP)/mtd-utils-$(HOST_MTD_UTILS_VER)/mkfs.jffs2 $(HOST_DIR)/bin
+		cp -a $(BUILD_TMP)/mtd-utils-$(HOST_MTD_UTILS_VER)/sumtool $(HOST_DIR)/bin
+#		$(MAKE) install DESTDIR=$(TARGET_DIR)
 	$(REMOVE)/mtd-utils-$(HOST_MTD_UTILS_VER)
 	$(TOUCH)
 
 #
 # host_mkcramfs
 #
-HOST_MKCRAMFS_VER = 1.1
+HOST_MKCRAMFS_VER    = 1.1
 HOST_MKCRAMFS_SOURCE = cramfs-$(HOST_MKCRAMFS_VER).tar.gz
+HOST_MKCRAMFS_PATCH  = cramfs-$(HOST_MKCRAMFS_VER).patch
 
 $(ARCHIVE)/$(HOST_MKCRAMFS_SOURCE):
 	$(WGET) https://sourceforge.net/projects/cramfs/files/cramfs/$(HOST_MKCRAMFS_VER)/$(HOST_MKCRAMFS_SOURCE)
@@ -97,7 +128,8 @@ $(D)/host_mkcramfs: directories $(ARCHIVE)/$(HOST_MKCRAMFS_SOURCE)
 	$(START_BUILD)
 	$(REMOVE)/cramfs-$(HOST_MKCRAMFS_VER)
 	$(UNTAR)/$(HOST_MKCRAMFS_SOURCE)
-	$(SET) -e; cd $(BUILD_TMP)/cramfs-$(HOST_MKCRAMFS_VER); \
+	$(CH_DIR)/cramfs-$(HOST_MKCRAMFS_VER); \
+		$(call apply_patches, $(HOST_MKCRAMFS_PATCH)); \
 		$(MAKE) all
 		cp $(BUILD_TMP)/cramfs-$(HOST_MKCRAMFS_VER)/mkcramfs $(HOST_DIR)/bin
 		cp $(BUILD_TMP)/cramfs-$(HOST_MKCRAMFS_VER)/cramfsck $(HOST_DIR)/bin
@@ -117,7 +149,7 @@ $(D)/host_mksquashfs3: directories $(ARCHIVE)/$(HOST_MKSQUASHFS3_SOURCE)
 	$(START_BUILD)
 	$(REMOVE)/squashfs$(HOST_MKSQUASHFS3_VER)
 	$(UNTAR)/$(HOST_MKSQUASHFS3_SOURCE)
-	$(SET) -e; cd $(BUILD_TMP)/squashfs$(HOST_MKSQUASHFS3_VER)/squashfs-tools; \
+	$(CH_DIR)/squashfs$(HOST_MKSQUASHFS3_VER)/squashfs-tools; \
 		$(MAKE) CC=gcc all
 		mv $(BUILD_TMP)/squashfs$(HOST_MKSQUASHFS3_VER)/squashfs-tools/mksquashfs $(HOST_DIR)/bin/mksquashfs3.3
 		mv $(BUILD_TMP)/squashfs$(HOST_MKSQUASHFS3_VER)/squashfs-tools/unsquashfs $(HOST_DIR)/bin/unsquashfs3.3
@@ -145,7 +177,7 @@ $(D)/host_mksquashfs: directories $(ARCHIVE)/$(LZMA_SOURCE) $(ARCHIVE)/$(HOST_MK
 	$(UNTAR)/$(LZMA_SOURCE)
 	$(REMOVE)/squashfs$(HOST_MKSQUASHFS_VER)
 	$(UNTAR)/$(HOST_MKSQUASHFS_SOURCE)
-	$(SET) -e; cd $(BUILD_TMP)/squashfs$(HOST_MKSQUASHFS_VER); \
+	$(CH_DIR)/squashfs$(HOST_MKSQUASHFS_VER); \
 		$(MAKE) -C squashfs-tools \
 			LZMA_SUPPORT=1 \
 			LZMA_DIR=$(BUILD_TMP)/lzma-$(LZMA_VER) \
@@ -157,62 +189,6 @@ $(D)/host_mksquashfs: directories $(ARCHIVE)/$(LZMA_SOURCE) $(ARCHIVE)/$(HOST_MK
 	$(TOUCH)
 
 #
-# host_resize2fs
-#
-HOST_E2FSPROGS_VER = $(E2FSPROGS_VER)
-HOST_E2FSPROGS_SOURCE = $(E2FSPROGS_SOURCE)
-
-$(D)/host_resize2fs: $(ARCHIVE)/$(HOST_E2FSPROGS_SOURCE)
-	$(START_BUILD)
-	$(UNTAR)/$(HOST_E2FSPROGS_SOURCE)
-	$(SET) -e; cd $(BUILD_TMP)/e2fsprogs-$(HOST_E2FSPROGS_VER); \
-		./configure $(SILENT_CONFIGURE) $(SILENT_OPT); \
-		$(MAKE)
-	$(SILENT)install -D -m 0755 $(BUILD_TMP)/e2fsprogs-$(HOST_E2FSPROGS_VER)/resize/resize2fs $(HOST_DIR)/bin/
-	$(SILENT)install -D -m 0755 $(BUILD_TMP)/e2fsprogs-$(HOST_E2FSPROGS_VER)/misc/mke2fs $(HOST_DIR)/bin/
-	$(SILENT)ln -sf mke2fs $(HOST_DIR)/bin/mkfs.ext2
-	$(SILENT)ln -sf mke2fs $(HOST_DIR)/bin/mkfs.ext3
-	$(SILENT)ln -sf mke2fs $(HOST_DIR)/bin/mkfs.ext4
-	$(SILENT)ln -sf mke2fs $(HOST_DIR)/bin/mkfs.ext4dev
-	$(SILENT)install -D -m 0755 $(BUILD_TMP)/e2fsprogs-$(HOST_E2FSPROGS_VER)/e2fsck/e2fsck $(HOST_DIR)/bin/
-	$(SILENT)ln -sf e2fsck $(HOST_DIR)/bin/fsck.ext2
-	$(SILENT)ln -sf e2fsck $(HOST_DIR)/bin/fsck.ext3
-	$(SILENT)ln -sf e2fsck $(HOST_DIR)/bin/fsck.ext4
-	$(SILENT)ln -sf e2fsck $(HOST_DIR)/bin/fsck.ext4dev
-	$(REMOVE)/e2fsprogs-$(HOST_E2FSPROGS_VER)
-	$(TOUCH)
-
-#
-# cortex-strings
-#
-CORTEX_STRINGS_VER = 48fd30c
-CORTEX_STRINGS_SOURCE = cortex-strings-git-$(CORTEX_STRINGS_VER).tar.bz2
-CORTEX_STRINGS_URL = http://git.linaro.org/git-ro/toolchain/cortex-strings.git
-
-$$(ARCHIVE)/$(CORTEX_STRINGS_SOURCE):
-	$(SCRIPTS_DIR)/get-git-archive.sh $(CORTEX_STRINGS_URL) $(CORTEX_STRINGS_VER) $(notdir $@) $(ARCHIVE)
-
-$(D)/cortex-strings: $(ARCHIVE)/$(CORTEX_STRINGS_SOURCE) directories
-	$(START_BUILD)
-	$(REMOVE)/cortex-strings-git-$(CORTEX_STRINGS_VER)
-	$(UNTAR)/$(CORTEX_STRINGS_SOURCE)
-	$(SILENT)set -e; cd $(BUILD_TMP)/cortex-strings-git-$(CORTEX_STRINGS_VER); \
-		./autogen.sh; \
-		$(MAKE_OPTS) \
-		./configure \
-			--build=$(BUILD) \
-			--host=$(TARGET) \
-			--prefix=/usr \
-			--disable-shared \
-			--enable-static \
-		; \
-		$(MAKE); \
-		$(MAKE) install DESTDIR=$(TARGET_DIR)
-	$(REWRITE_LIBTOOL)/libcortex-strings.la
-	$(REMOVE)/cortex-strings-git-$(CORTEX_STRINGS_VER)
-	$(TOUCH)
-
-#
 #
 #
 BOOTSTRAP  = directories
@@ -221,13 +197,9 @@ BOOTSTRAP += $(CROSSTOOL)
 BOOTSTRAP += $(TARGET_DIR)/lib/libc.so.6
 BOOTSTRAP += $(D)/host_pkgconfig
 BOOTSTRAP += $(D)/host_module_init_tools
-BOOTSTRAP += $(D)/host_mtd_utils
+BOOTSTRAP += $(D)/host_mtd_utils_old
 BOOTSTRAP += $(D)/host_mkcramfs
-BOOTSTRAP += $(D)/host_mksquashfs
-ifeq ($(BOXARCH), arm)
-BOOTSTRAP += $(D)/host_resize2fs
-BOOTSTRAP += $(D)/cortex-strings
-endif
+#BOOTSTRAP += $(D)/host_mksquashfs
 
 $(D)/bootstrap: $(BOOTSTRAP)
 	@touch $@
@@ -240,10 +212,10 @@ SYSTEM_TOOLS += $(D)/zlib
 SYSTEM_TOOLS += $(D)/sysvinit
 SYSTEM_TOOLS += $(D)/diverse-tools
 SYSTEM_TOOLS += $(D)/e2fsprogs
-SYSTEM_TOOLS += $(D)/jfsutils
 SYSTEM_TOOLS += $(D)/hdidle
 SYSTEM_TOOLS += $(D)/portmap
-ifneq ($(BOXTYPE), $(filter $(BOXTYPE), ufs922))
+ifneq ($(BOXTYPE), $(filter $(BOXTYPE), ufs910 ufs922))
+SYSTEM_TOOLS += $(D)/jfsutils
 SYSTEM_TOOLS += $(D)/nfs_utils
 endif
 SYSTEM_TOOLS += $(D)/vsftpd
@@ -251,9 +223,6 @@ SYSTEM_TOOLS += $(D)/autofs
 SYSTEM_TOOLS += $(D)/udpxy
 SYSTEM_TOOLS += $(D)/dvbsnoop
 SYSTEM_TOOLS += $(D)/fbshot
-ifeq ($(BOXARCH), arm)
-SYSTEM_TOOLS += $(D)/ofgwrite
-endif
 SYSTEM_TOOLS += $(D)/driver
 
 $(D)/system-tools: $(SYSTEM_TOOLS) $(TOOLS)
@@ -278,29 +247,34 @@ $(DRIVER_DIR):
 	@echo '===================================================================='
 	@echo '      Cloning $(GIT_NAME_DRIVER)-driver git repository'
 	@echo '===================================================================='
-	if [ ! -e $(DRIVER_DIR)/.git ]; then \
+	@if [ ! -e $(DRIVER_DIR)/.git ]; then \
 		git clone $(SILENT_CONFIGURE) $(GITHUB)/$(GIT_NAME_DRIVER)/driver.git driver; \
 	fi
-
-$(APPS_DIR):
+	@if [ -d ~/pti_np ]; then \
+		echo -e "\nREMARK: Installing pti_np.\n"; \
+		mkdir $(DRIVER_DIR)/pti_np; \
+		cp -rf ~/pti_np/* $(DRIVER_DIR)/pti_np; \
+	fi
+	
+$(TOOLS_DIR):
 	@echo '===================================================================='
-	@echo '      Cloning $(GIT_NAME_APPS)-apps git repository'
+	@echo '      Cloning $(GIT_NAME_TOOLS)-tools git repository'
 	@echo '===================================================================='
-	if [ ! -e $(APPS_DIR)/.git ]; then \
-		git clone $(SILENT_CONFIGURE) $(GITHUB)/$(GIT_NAME_APPS)/apps.git apps; \
+	@if [ ! -e $(TOOLS_DIR)/.git ]; then \
+		git clone $(MINUS_Q) $(GITHUB)/$(GIT_NAME_TOOLS)/tools.git tools; \
 	fi
 
 $(FLASH_DIR):
 	@echo '===================================================================='
 	@echo '      Cloning $(GIT_NAME_FLASH)-flash git repository'
 	@echo '===================================================================='
-	if [ ! -e $(FLASH_DIR)/.git ]; then \
-		git clone $(SILENT_CONFIGURE) $(GITHUB)/$(GIT_NAME_FLASH)/flash.git flash; \
+	@if [ ! -e $(FLASH_DIR)/.git ]; then \
+		git clone $(MINUS_Q) $(GITHUB)/$(GIT_NAME_FLASH)/flash.git flash; \
 	fi
 	@echo ''
 
 PREQS  = $(DRIVER_DIR)
-PREQS += $(APPS_DIR)
+PREQS += $(TOOLS_DIR)
 PREQS += $(FLASH_DIR)
 
 preqs: $(PREQS)

@@ -99,7 +99,6 @@ PACKAGES="\
 	${UBUNTU:+pkg-config}           ${SUSE:+pkg-config}                                    ${GENTOO:+pkg-config}  \
 	${UBUNTU:+patch}                ${SUSE:+patch}                                         ${GENTOO:+patch}       \
 	${UBUNTU:+autopoint}                                                                                          \
-	${UBUNTU:+cfv}                                                                         ${GENTOO:+cfv}         \
 	${UBUNTU:+fakeroot}                                                                    ${GENTOO:+fakeroot}    \
 	${UBUNTU:+gawk}                                                                        ${GENTOO:+gawk}        \
 	${UBUNTU:+libglib2.0-bin}       ${SUSE:+glib2-devel}         ${FEDORA:+glib2-devel}    ${GENTOO:+glib:2}      \
@@ -114,7 +113,11 @@ PACKAGES="\
 	                                                             ${FEDORA:+byacc}                                 \
 	${UBUNTU:+libssl-dev}           ${SUSE:+libopenssl-devel}    ${FEDORA:+openssl-devel}                         \
 	${UBUNTU:+libmount-dev}                                      ${FEDORA:+help2man}                              \
-	${UBUNTU:+mtools}                                                                                             \
+	${UBUNTU:+mtools}                                            ${FEDORA:+rpcgen}                                \
+	${UBUNTU:+u-boot-tools}                                                                                       \
+	${UBUNTU:+curl}                                                                                               \
+	${UBUNTU:+mm-common}            ${SUSE:+mm-common}           ${FEDORA:+mm-common}     ${GENTOO:+mm-common}    \
+	${UBUNTU:+autoconf-archive}
 ";
 
 if [ "$UBUNTU" == 1 ]; then
@@ -125,6 +128,11 @@ fi
 if ([ "$UBUNTU" == 1  ] &&  [ "$UBUNTU_VERSION" -ge "16" ]) || ([ "$UBUNTU" == 2 ] && [ "$MINT_VERSION" -ge "18" ]); then
 	PACKAGES="$PACKAGES \
 	${UBUNTU:+libtool-bin} \
+	";
+fi
+if ([ "$UBUNTU" == 1  ] &&  [ "$UBUNTU_VERSION" -ge "22" ]) || ([ "$UBUNTU" == 2 ] && [ "$MINT_VERSION" -ge "21" ]); then
+	PACKAGES="$PACKAGES \
+	${UBUNTU:+gtk-doc-tools} \
 	";
 fi
 

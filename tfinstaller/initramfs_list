@@ -60,16 +60,19 @@ dir   /bin                                                                      
 file  /bin/busybox                     ../../tufsbox/release/bin/busybox                  0755 0 0
 slink /bin/echo                        /bin/busybox                                       0777 0 0
 slink /bin/ash                         /bin/busybox                                       0777 0 0
+slink /bin/awk                         /bin/busybox                                       0777 0 0
 slink /bin/chmod                       /bin/busybox                                       0777 0 0
 slink /bin/clear                       /bin/busybox                                       0777 0 0
 slink /bin/sh                          /bin/busybox                                       0777 0 0
 slink /bin/bash                        /bin/busybox                                       0777 0 0
 slink /bin/cp                          /bin/busybox                                       0777 0 0
 slink /bin/dd                          /bin/busybox                                       0777 0 0
+slink /bin/gzip                        /bin/busybox                                       0777 0 0
 slink /bin/gunzip                      /bin/busybox                                       0777 0 0
 slink /bin/ln                          /bin/busybox                                       0777 0 0
 slink /bin/ls                          /bin/busybox                                       0777 0 0
 slink /bin/mv                          /bin/busybox                                       0777 0 0
+slink /bin/rm                          /bin/busybox                                       0777 0 0
 slink /bin/cat                         /bin/busybox                                       0777 0 0
 slink /bin/sleep                       /bin/busybox                                       0777 0 0
 slink /bin/sync                        /bin/busybox                                       0777 0 0
@@ -81,6 +84,7 @@ slink /bin/tee                         /bin/busybox                             
 slink /bin/mkdir                       /bin/busybox                                       0777 0 0
 slink /bin/rmdir                       /bin/busybox                                       0777 0 0
 slink /bin/sed                         /bin/busybox                                       0777 0 0
+slink /bin/tail                        /bin/busybox                                       0777 0 0
 slink /bin/tar                         /bin/busybox                                       0777 0 0
 
 dir   /etc                                                                                0777 0 0
@@ -112,7 +116,7 @@ file  /drvko/e2_proc.ko                ../../tufsbox/release/lib/modules/e2_proc
 file  /drvko/tffp.ko                   ../../tufsbox/release/lib/modules/tffp.ko          0755 0 0
 
 dir   /lib                                                                                0777 0 0
-file  /lib/libc.so.6                   ../../tufsbox/release/lib/libc.so.6                0755 0 0
+file  /lib/libc.so.6                   ../../tufsbox/release/lib/libc.so.6                0755 0 0             
 file  /lib/libpthread.so.0             ../../tufsbox/release/lib/libpthread.so.0          0755 0 0
 file  /lib/ld-linux.so.2               ../../tufsbox/release/lib/ld-linux.so.2            0755 0 0
 file  /lib/libe2p.so.2                 ../../tufsbox/release/usr/lib/libe2p.so.2          0755 0 0
@@ -122,14 +126,19 @@ file  /lib/libcom_err.so.0             ../../tufsbox/release/usr/lib/libcom_err.
 file  /lib/libblkid.so.1               ../../tufsbox/release/usr/lib/libblkid.so.1        0755 0 0
 file  /lib/libuuid.so.1                ../../tufsbox/release/usr/lib/libuuid.so.1         0755 0 0
 file  /lib/libcrypt.so.1               ../../tufsbox/release/lib/libcrypt.so.1            0755 0 0
+file  /lib/libdl-2.14.1.so             ../../tufsbox/release/lib/libdl-2.14.1.so          0755 0 0
+slink /lib/libdl.so.2                  /lib/libdl-2.14.1.so                               0755 0 0
+file  /lib/librt-2.14.1.so             ../../tufsbox/release/lib/librt-2.14.1.so          0755 0 0
+slink /lib/librt.so.1                  /lib/librt-2.14.1.so                               0755 0 0
 
 dir   /proc                                                                               0777 0 0
 
 dir   /root                                                                               0700 0 0
 
 dir   /sbin                                                                               0700 0 0
+slink /sbin/blockdev                   /bin/busybox                                       0755 0 0
 slink /sbin/init                       /bin/busybox                                       0755 0 0
-slink /sbin/insmod                     /bin/busybox                                       0755 0 0
+file  /sbin/insmod                     ../../tufsbox/release/sbin/insmod                  0755 0 0
 slink /sbin/getty                      /bin/busybox                                       0755 0 0
 slink /sbin/mount                      /bin/busybox                                       0755 0 0
 slink /sbin/umount                     /bin/busybox                                       0755 0 0

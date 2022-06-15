@@ -1,6 +1,7 @@
 #!/bin/sh
-#Version 170422.1
+#Version 210903.1
 
+echo "[rcS] Start"
 echo "Kathrein UFS912 Enigma2"
 
 MODDIR=/lib/modules
@@ -8,12 +9,12 @@ MODDIR=/lib/modules
 insmod $MODDIR/e2_proc.ko
 
 echo "[rcS] Init frontpanel"
-insmod $MODDIR/micom.ko paramDebug=0
+insmod $MODDIR/kathrein_micom.ko #paramDebug=30
 
 if [ -e /var/etc/.firstboot ]; then
-   #fp_control does not work here
-   echo "WAIT 1 minute" >/dev/vfd
-   echo "[rcS] WAIT 1 minute"
+   echo "config.plugins.remotecontroltype.rctype=12" >> /etc/enigma2/settings
+   echo "Wait 1 minute" > /dev/vfd
+   echo "[rcS] Wait 1 minute"
    rm /var/etc/.firstboot
    sleep 1
    touch /dev/.devfsd
@@ -24,14 +25,9 @@ fi
 
 /etc/init.d/mountvirtfs start
 
-echo "Starting DEBUG Interface"
+echo "[rcS] Starting DEBUG Interface"
 /etc/init.d/mountall start
 /etc/init.d/hostname start
-
-#green led on
-fp_control -l 2 1
-#led brightness
-fp_control -led 80
 
 /etc/init.d/autofs start
 
@@ -48,11 +44,11 @@ fi
 echo "[rcS] Init stmfb (LOAD 9)"
 echo "LOAD 9" > /dev/vfd
 insmod $MODDIR/stmcore-display-sti7111.ko
-if grep -q "config.av.videoport=Scart" /etc/enigma2/settings; then
-   insmod $MODDIR/stmfb.ko display0=720x576-16@50:1m:pal:cvbs;
-else
-   insmod $MODDIR/stmfb.ko display0=1280x720-32@50:15m:pal:yuv:yuv;# display1=720x576-16@50:1m:pal:cvbs;
-fi
+#if grep -q "config.av.videoport=Scart" /etc/enigma2/settings; then
+#   insmod $MODDIR/stmfb.ko display0=720x576-16@50:1m::pal:cvbs
+#else
+   insmod $MODDIR/stmfb.ko display0=1280x720-32@50:16m::pal:cvbs:rgb
+#fi
 echo "[rcS] Loading modules"
 
 if [ ! -e /boot/audio.elf ] || [ ! -e /boot/video.elf ]; then
@@ -61,19 +57,19 @@ if [ ! -e /boot/audio.elf ] || [ ! -e /boot/video.elf ]; then
    sleep 5
 fi
 
-echo "[rcS] Load audio firmware (LOAD 8)"
+echo "[rcS] Load video firmware (LOAD 8)"
 echo "LOAD 8" > /dev/vfd
-/bin/ustslave /dev/st231-1 /boot/audio.elf > /dev/null
-
-echo "[rcS] Load video firmware (LOAD 7)"
-echo "LOAD 7" > /dev/vfd
 /bin/ustslave /dev/st231-0 /boot/video.elf > /dev/null
+
+echo "[rcS] Load audio firmware (LOAD 7)"
+echo "LOAD 7" > /dev/vfd
+/bin/ustslave /dev/st231-1 /boot/audio.elf > /dev/null
 
 echo "[rcS] Init embx (LOAD 6)"
 echo "LOAD 6" > /dev/vfd
 insmod $MODDIR/embxshell.ko
-insmod $MODDIR/embxmailbox.ko mailbox0=0xfe211000:136:set2 mailbox1=0xfe212000:0;
-insmod $MODDIR/embxshm.ko mailbox0=shm:0:7:0x60000000:0:256:256:0:512:0x40000000:0x10000000;
+insmod $MODDIR/embxmailbox.ko mailbox0=0xfe211000:136:set2 mailbox1=0xfe212000:0
+insmod $MODDIR/embxshm.ko mailbox0=shm:0:7:0x60000000:0:256:256:0:512:0x40000000:0x10000000
 insmod $MODDIR/mme_host.ko transport0=shm
 
 echo "[rcS] Init AVS (LOAD 5)"
@@ -89,12 +85,12 @@ insmod $MODDIR/p2div64.ko
 insmod $MODDIR/stm_v4l2.ko
 insmod $MODDIR/pseudocard.ko
 
-echo "[rcS] Init frontends"
+echo "[rcS] Init frontend and CI"
 insmod $MODDIR/stv090x.ko
 insmod $MODDIR/ufs912_cic.ko
 
 insmod $MODDIR/pti.ko waitMS=20 videoMem=4096
-if [ $?=='2' ]; then
+if [ $? -ne 0 ]; then
    insmod $MODDIR/pti.ko
    echo "[rcS] Simple pti"
 else
@@ -133,12 +129,15 @@ if [ -e $MODDIR/tun.ko ]; then
 fi
 if [ -e $MODDIR/usbserial.ko ]; then
    insmod $MODDIR/usbserial.ko
-fi
-if [ -e $MODDIR/ftdi.ko ]; then
-   insmod $MODDIR/ftdi.ko
-fi
-if [ -e $MODDIR/pl2303.ko ]; then
-   insmod $MODDIR/pl2303.ko
+   if [ -e $MODDIR/ftdi.ko ]; then
+      insmod $MODDIR/ftdi.ko
+   fi
+   if [ -e $MODDIR/pl2303.ko ]; then
+      insmod $MODDIR/pl2303.ko
+   fi
+   if [ -e $MODDIR/ch341.ko ]; then
+      insmod $MODDIR/ch341.ko
+   fi
 fi
 
 echo "[rcS] Init frontpanel (LOAD 2)"
@@ -150,7 +149,7 @@ echo "[rcS] Init remote control"
 
 NFS=`grep -c nfs /proc/cmdline`
 if [ "$NFS" -eq "1" ]; then
-   echo "[rcS] Booting from nfs, don't set network"
+   echo "[rcS] Booting from NFS, do not set network"
 else
    if [ -e /etc/network/interfaces ]; then
       ip addr flush eth0
@@ -186,6 +185,8 @@ if [ -e /etc/init.d/automount ]; then
    python /etc/init.d/automount &
 fi
 
+echo "[rcS] Do extras (LOAD 1)"
+echo "LOAD 1" > /dev/vfd
 # inadyn
 inadyn=`cat /etc/enigma2/settings | grep systemoptions.inadyn | cut -d "=" -f2`
 if [ ! $inadyn ] ||  [ ! -e /usr/bin/inadyn ]; then
@@ -210,21 +211,20 @@ if [ ! -e /tmp/reference.dat ] && [ -e /var/bin/reference.dat ]; then
    cp /var/bin/reference.dat /tmp
 fi
 
-# Try and synchronise time
+echo "[rcS] Try and synchronise time"
 #inettime=`cat /etc/enigma2/settings | grep systemoptions.inettime | cut -d "=" -f2`
-# if [ ! $inettime ] && [ -e /sbin/ntpdate ]; then
-if [ -e /sbin/ntpdate ]; then
+# if [ ! $inettime ] && [ -e /sbin/ntpd ]; then
+if [ -h /usr/sbin/ntpd ]; then
    echo "[rcS] Set internet time"
-   (/sbin/ntpdate nl.pool.ntp.org; /bin/fp_control -sst) &
-else
-   if [ -e /usr/sbin/time.sh ]; then
-      echo "[rcS] Use transponder time"
-      /usr/sbin/time.sh &
-   fi
+   (ntpd -n -p 0.europe.pool.ntp.org -q; /bin/fp_control -sst) &
+#else
+#   if [ -e /usr/sbin/time.sh ]; then
+#      echo "[rcS] Use transponder time"
+#      /usr/sbin/time.sh &
+#   fi
 fi
 
-echo "[rcS] Init portmap & ftp (LOAD 1)"
-echo "LOAD 1" > /dev/vfd
+echo "[rcS] Init portmap & ftp"
 /etc/init.d/portmap start
 /etc/init.d/vsftpd start
 /usr/sbin/inetd
@@ -234,38 +234,57 @@ if [ -e /etc/ownscript.sh ]; then
    /etc/ownscript.sh &
 fi
 
-echo "LOADING Enigma2" > /dev/vfd
-echo "[rcS] LOADING e2"
+echo "LOAD Enigma2" > /dev/vfd
+echo "[rcS] Loading Enigma2"
 
 stfbcontrol a 255
+export ENIGMA_DEBUG_LVL=3
 
 until false
 do
-   echo "starting e2->"
+   echo "[rcS] Starting Enigma2 ->"
    /usr/local/bin/enigma2
    rtv=$?
-   echo "e2 ended <- RTV: " $rtv
+   echo "[rcS] E2 ended <- return value: " $rtv
+   fp_control -i 17 0  # all icons off
    case "$rtv" in
-      0) echo "0"
-         echo "E2 Error" > /dev/vfd
+      0) echo "[rcS] Enigma2 ERROR"
+         echo "Enigma2 ERROR" > /dev/vfd
          init 6;;
-      1) echo "1"
-         echo "Shutdown" > /dev/vfd
+      1) echo "[rcS] Deep Standby"
+         echo "Deep Standby" > /dev/vfd
+         if [ -e /usr/local/share/enigma2/shutdown.mvi ]; then
+            showiframe -p /usr/local/share/enigma2/shutdown.mvi &
+         fi
          init 0;;
-      2) echo "2"
+      2) echo "[rcS] REBOOT"
          echo "Reboot" > /dev/vfd
          init 6;;
-      3) echo "3"
-         echo "E2 Restart" > /dev/vfd
+      3) echo "[rcS] Enigma2 RESTART"
+         echo "Enigma2 Restart" > /dev/vfd
+         export ENIGMA_DEBUG_LVL=3
          echo "0" > /proc/progress
-         if [ -e /boot/bootlogo.mvi ]; then
+         if [ -e /usr/local/share/enigma2/backdrop.mvi ]; then
+            showiframe -p /usr/local/share/enigma2/backdrop.mvi &
+         else
             showiframe -p /boot/bootlogo.mvi &
          fi;;
-      *) echo "*"
-         echo "Error" > /dev/vfd
+      6) echo "[rcS] E2 DEBUG RESTART"
+         echo "E2 Debug Restart" > /dev/vfd
+         export ENIGMA_DEBUG_LVL=4
+         echo "0" > /proc/progress
+         if [ -e /usr/local/share/enigma2/backdrop.mvi ]; then
+            showiframe -p /usr/local/share/enigma2/backdrop.mvi &
+         else
+            showiframe -p /boot/bootlogo.mvi &
+         fi;;
+      *) echo "[rcS] ERROR"
+         echo "ERROR" > /dev/vfd
          init 6;;
    esac
-done 
+done
 
 #never reached
-
+echo "[rcS] REBOOT UFS912"
+echo "REBOOT" > /dev/vfd
+reboot -f
